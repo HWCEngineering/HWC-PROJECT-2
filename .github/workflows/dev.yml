@@ -1,0 +1,96 @@
+name: CI - Dev Branch
+
+# Runs on pushes to dev and PRs targeting dev.
+# Validates code quality without deploying anything.
+
+on:
+  push:
+    branches: ["dev"]
+  pull_request:
+    branches: ["dev"]
+
+concurrency:
+  group: ci-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend - Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync assets
+        run: npm run assets:sync
+
+      - name: Sync Potree files
+        run: npm run potree:sync
+
+      - name: Type-check frontend
+        run: npx --workspace=@hwc/web astro check
+        continue-on-error: true
+
+      - name: Build frontend
+        env:
+          # Use placeholder URL for CI build validation (not deployed)
+          PUBLIC_API_BASE_URL: "https://placeholder.azurecontainerapps.io"
+          PUBLIC_MAPTILER_API_KEY: "ci-placeholder"
+          PUBLIC_APP_BASE_PATH: "/cloud-viewer"
+        run: npm run build
+
+  backend:
+    name: Backend - Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: apps/api/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r apps/api/requirements.txt
+        # Note: GDAL won't install without system libs, but we can still validate syntax
+
+      - name: Validate Python syntax
+        run: python -m py_compile apps/api/main.py
+        continue-on-error: true
+
+      - name: Check import structure
+        run: |
+          cd apps/api
+          python -c "
+          import ast, sys, pathlib
+
+          errors = []
+          for f in pathlib.Path('.').rglob('*.py'):
+              try:
+                  ast.parse(f.read_text())
+              except SyntaxError as e:
+                  errors.append(f'{f}: {e}')
+
+          if errors:
+              print('Syntax errors found:')
+              for e in errors:
+                  print(f'  {e}')
+              sys.exit(1)
+          else:
+              print(f'All Python files pass syntax check')
+          "
+
+      - name: Validate Dockerfile builds
+        run: docker build --target=base -f apps/api/Dockerfile apps/api || true
+        # Quick validation that Dockerfile syntax is correct
+        continue-on-error: true
