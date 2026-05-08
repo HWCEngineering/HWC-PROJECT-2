@@ -102,7 +102,7 @@ jobs:
               --set-env-vars \
                 PORT=8000 \
                 MONGO_CONNECTION_STRING="${{ secrets.MONGO_CONNECTION_STRING }}" \
-                AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_CONNECTION_STRING }}" \
                 NAME="${{ vars.NAME }}"
           else
             # Create new container app
@@ -123,7 +123,7 @@ jobs:
               --env-vars \
                 PORT=8000 \
                 MONGO_CONNECTION_STRING="${{ secrets.MONGO_CONNECTION_STRING }}" \
-                AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_CONNECTION_STRING }}" \
                 NAME="${{ vars.NAME }}"
           fi
 
