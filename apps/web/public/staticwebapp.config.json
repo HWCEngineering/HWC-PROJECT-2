@@ -2,17 +2,17 @@
     "routes": [
         {
             "route": "/",
-            "rewrite": "/index.html"
+            "rewrite": "/cloud-viewer/index.html"
         }
     ],
     "navigationFallback": {
-        "rewrite": "/_fallback/index.html",
+        "rewrite": "/cloud-viewer/_fallback/index.html",
         "exclude": [
-            "/_astro/*",
-            "/assets/*",
-            "/potree/*",
-            "/index.html",
-            "/viewer-example/*",
+            "/cloud-viewer/_astro/*",
+            "/cloud-viewer/assets/*",
+            "/cloud-viewer/potree/*",
+            "/cloud-viewer/index.html",
+            "/cloud-viewer/viewer-example/*",
             "*.{css,scss,js,png,gif,ico,jpg,svg,wasm}"
         ]
     },
