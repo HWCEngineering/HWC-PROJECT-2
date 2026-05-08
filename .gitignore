@@ -36,3 +36,6 @@ spec/
 .vercel
 
 apps/*/public/assets/**
+
+# Migration scripts (local use only)
+scripts/migrate_mongo.py
