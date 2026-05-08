@@ -10,13 +10,13 @@ const cloudViewerPath = join(distPath, 'cloud-viewer');
 async function organizeDist() {
   try {
     console.log('Organizing dist folder for Azure Static Web Apps...');
-    
+
     // Create cloud-viewer directory
     await mkdir(cloudViewerPath, { recursive: true });
-    
+
     // Get all items in dist
     const items = await readdir(distPath, { withFileTypes: true });
-    
+
     // Move everything except cloud-viewer into cloud-viewer/
     for (const item of items) {
       if (item.name !== 'cloud-viewer') {
@@ -26,7 +26,7 @@ async function organizeDist() {
         console.log(`Moved ${item.name} to cloud-viewer/`);
       }
     }
-    
+
     console.log('✓ Dist folder organized successfully');
   } catch (error) {
     console.error('Error organizing dist folder:', error);
