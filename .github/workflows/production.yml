@@ -182,13 +182,15 @@ jobs:
         run: npm run build
 
       # Deploy built static files to Azure Static Web Apps
+      # We pre-built above, so skip SWA's internal build and point to the output directly
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: "upload"
-          app_location: "apps/web"
-          output_location: "dist"
+          skip_app_build: true
+          app_location: "apps/web/dist"
+          output_location: ""
         env:
           PUBLIC_API_BASE_URL: ${{ needs.deploy-api.outputs.api_url }}
           PUBLIC_MAPTILER_API_KEY: ${{ vars.PUBLIC_MAPTILER_API_KEY }}

@@ -1,0 +1,10 @@
+{
+    "navigationFallback": {
+        "rewrite": "/cloud-viewer/index.html",
+        "exclude": [
+            "/cloud-viewer/_astro/*",
+            "/cloud-viewer/assets/*",
+            "/cloud-viewer/potree/*"
+        ]
+    }
+}
