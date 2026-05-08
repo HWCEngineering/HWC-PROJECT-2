@@ -1,0 +1,192 @@
+name: Deploy Production
+
+# Triggers on push to main (after PR merge from dev)
+# Deploys backend to Azure Container Apps, then frontend to Azure Static Web Apps
+# The frontend build automatically discovers the backend API URL — no manual redeploy needed
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/hwc-potree-api
+  CONTAINER_NAME: hwc-potree-api
+  CONTAINER_APP_ENV: LiDAR-CONTAINER
+  LOCATION: eastus2
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1: Build and deploy the backend API container
+  # Pushes image to GHCR, then creates/updates Azure Container App
+  # Outputs the live API URL for the frontend build
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-api:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_url: ${{ steps.capture-url.outputs.api_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set lowercase image name
+        run: |
+          echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Authenticate to GitHub Container Registry (company-owned, not Docker Hub)
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME_LC }}:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_NAME_LC }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Ensure the Container App Environment exists before deploying
+      - name: Ensure Container App Environment exists
+        run: |
+          if ! az containerapp env show \
+            --name "${{ env.CONTAINER_APP_ENV }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" >/dev/null 2>&1; then
+            az containerapp env create \
+              --name "${{ env.CONTAINER_APP_ENV }}" \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --location "${{ env.LOCATION }}"
+          fi
+
+      # Create or update the Container App with the new image
+      # Uses GHCR_READ_TOKEN for the container registry pull credential
+      - name: Create or update API Container App
+        run: |
+          IMAGE="ghcr.io/${{ env.IMAGE_NAME_LC }}:${{ github.sha }}"
+
+          if az containerapp show \
+            --name "${{ env.CONTAINER_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" >/dev/null 2>&1; then
+
+            # Update existing container app
+            az containerapp registry set \
+              --name "${{ env.CONTAINER_NAME }}" \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --server ghcr.io \
+              --username "${{ github.repository_owner }}" \
+              --password "${{ secrets.GHCR_READ_TOKEN }}"
+
+            az containerapp update \
+              --name "${{ env.CONTAINER_NAME }}" \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --image "$IMAGE" \
+              --cpu 2.0 \
+              --memory 4.0Gi \
+              --set-env-vars \
+                PORT=8000 \
+                MONGO_CONNECTION_STRING="${{ secrets.MONGO_CONNECTION_STRING }}" \
+                AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                NAME="${{ vars.NAME }}"
+          else
+            # Create new container app
+            az containerapp create \
+              --name "${{ env.CONTAINER_NAME }}" \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --environment "${{ env.CONTAINER_APP_ENV }}" \
+              --image "$IMAGE" \
+              --target-port 8000 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 3 \
+              --cpu 2.0 \
+              --memory 4.0Gi \
+              --registry-server ghcr.io \
+              --registry-username "${{ github.repository_owner }}" \
+              --registry-password "${{ secrets.GHCR_READ_TOKEN }}" \
+              --env-vars \
+                PORT=8000 \
+                MONGO_CONNECTION_STRING="${{ secrets.MONGO_CONNECTION_STRING }}" \
+                AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                NAME="${{ vars.NAME }}"
+          fi
+
+      # Dynamically capture the backend FQDN so the frontend can be built with it
+      # This eliminates the need to manually update PUBLIC_API_BASE_URL
+      - name: Capture API URL
+        id: capture-url
+        run: |
+          API_FQDN=$(az containerapp show \
+            --name "${{ env.CONTAINER_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --query "properties.configuration.ingress.fqdn" \
+            -o tsv)
+
+          if [ -z "$API_FQDN" ]; then
+            echo "ERROR: Could not determine API FQDN"
+            exit 1
+          fi
+
+          echo "api_url=https://$API_FQDN" >> "$GITHUB_OUTPUT"
+          echo "API URL is https://$API_FQDN"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2: Build and deploy the frontend
+  # Runs AFTER backend deployment so it can use the discovered API URL
+  # This solves the "chicken and egg" problem of needing the API URL at build time
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync assets
+        run: npm run assets:sync
+
+      - name: Sync Potree
+        run: npm run potree:sync
+
+      # Build frontend using the dynamically discovered API URL from the backend job
+      - name: Build frontend
+        env:
+          PUBLIC_API_BASE_URL: ${{ needs.deploy-api.outputs.api_url }}
+          PUBLIC_MAPTILER_API_KEY: ${{ vars.PUBLIC_MAPTILER_API_KEY }}
+          PUBLIC_APP_BASE_PATH: /cloud-viewer
+        run: npm run build
+
+      # Deploy built static files to Azure Static Web Apps
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "upload"
+          app_location: "apps/web"
+          output_location: "dist"
+          skip_app_build: true
