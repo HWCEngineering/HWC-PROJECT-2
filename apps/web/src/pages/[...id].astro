@@ -1,21 +1,23 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import { ViewerApp } from '../components/ViewerApp';
+import Layout from "../layouts/Layout.astro";
+import { ViewerApp } from "../components/ViewerApp";
 
 // Generate a single fallback page - Azure will route all /cloud-viewer/:id requests here
 export function getStaticPaths() {
-  return [
-    { params: { id: '_fallback' } }
-  ];
+  return [{ params: { id: "_fallback" } }];
 }
 
-const mapTilerKey = import.meta.env.PUBLIC_MAPTILER_KEY || '';
-const basePath = import.meta.env.PUBLIC_APP_BASE_PATH || '';
+const mapTilerKey = import.meta.env.PUBLIC_MAPTILER_KEY || "";
+const basePath = import.meta.env.PUBLIC_APP_BASE_PATH || "";
 
 // Extract project ID from URL for the title (will be determined client-side)
-const pageTitle = 'Cloud Viewer';
+const pageTitle = "Cloud Viewer";
 ---
 
 <Layout title={pageTitle}>
-  <ViewerApp client:only="react" mapTilerKey={mapTilerKey} basePath={basePath} />
+  <ViewerApp
+    client:only="react"
+    mapTilerKey={mapTilerKey}
+    basePath={basePath}
+  />
 </Layout>

@@ -184,3 +184,4 @@ jobs:
         env:
           PUBLIC_API_BASE_URL: ${{ needs.deploy-api.outputs.api_url }}
           PUBLIC_MAPTILER_API_KEY: ${{ vars.PUBLIC_MAPTILER_API_KEY }}
+          PUBLIC_APP_BASE_PATH: /cloud-viewer
