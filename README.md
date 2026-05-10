@@ -1,6 +1,44 @@
 # HWC Cloud Viewer
 
-A monorepo for the HWC Survey Cloud Viewer platform — a web application for managing, processing, and visualizing LiDAR point cloud data and orthophotos.
+HWC Cloud Viewer is a full-stack platform that lets surveyors and geospatial teams upload LiDAR point clouds (LAS/LAZ) and orthophotos (GeoTIFF), process them in the background, and view the results interactively in a web browser — no desktop GIS software required.
+
+## Overview
+
+### The Problem
+
+Working with LiDAR data typically means juggling multi-gigabyte files, specialized desktop tools, and manual format conversions before anyone can actually look at the data. Sharing results with stakeholders who don't have those tools is even harder. Teams need a way to upload raw survey data, have it processed automatically, and make it viewable by anyone with a browser.
+
+### What It Does
+
+HWC Cloud Viewer accepts raw point cloud files (up to 30GB) and georeferenced rasters, converts them to web-optimized formats (Potree and Cloud Optimized GeoTIFF), and serves them through an interactive viewer with 3D point cloud rendering and 2D map overlays. Processing happens asynchronously — upload a file and come back when it's ready.
+
+### Inputs → Outputs
+
+| Input | Output |
+|-------|--------|
+| LAS/LAZ point cloud files | Potree-format 3D viewer data |
+| GeoTIFF orthophotos | Cloud Optimized GeoTIFF (COG) with Leaflet bounds |
+| Project metadata (name, client, tags) | Searchable project catalog with thumbnails |
+
+### Pipeline
+
+```
+Upload (LAS/LAZ or GeoTIFF)
+  → Azure Blob Storage (temporary)
+    → Background Worker picks up job
+      → PotreeConverter (point clouds) or GDAL (orthophotos)
+        → Processed output stored in Azure Blob (permanent, public URL)
+          → Metadata + URLs saved to Cosmos DB
+            → Frontend renders via Potree (3D) / Leaflet (2D)
+```
+
+### Tech Stack
+
+- Frontend: Astro 5, React 19, Potree 1.8.2, Leaflet, MapTiler
+- Backend: FastAPI (Python 3.12), Uvicorn, GDAL, PotreeConverter
+- Storage: Azure Blob Storage, Azure Cosmos DB (MongoDB API)
+- Hosting: Azure Container Apps (API), Azure Static Web Apps (frontend)
+- CI/CD: GitHub Actions, Docker, GitHub Container Registry
 
 ## Architecture
 
